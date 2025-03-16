@@ -26,13 +26,27 @@ const port = process.env.PORT || 4000;
 connectDB();
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+
+
+
+
 app.use(cors({
   origin: [
-    'http://localhost:4000',               // Local development
-    'https://e-farm-frontend.vercel.app'   // Your Vercel production frontend
+    'http://localhost:3000',
+    'http://localhost:4000',
+    'http://localhost:5174',
+    'https://e-farm-frontend.vercel.app'
   ],
-  credentials: true
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
+
+
+
 app.use('/api/notification', notificationRoutes)
 // API Endpoints
 app.use('/api/filter', filterRouter);
