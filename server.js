@@ -27,23 +27,20 @@ connectDB();
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-
-
-
-
-app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:4000',
-    'http://localhost:5174',
-    'https://e-farm-frontend.vercel.app'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-}));
+app.use(cors());
+// app.use(cors({
+//   origin: [
+//     'http://localhost:3000',
+//     'http://localhost:4000',
+//     'http://localhost:5173',
+//     // 'https://e-farm-frontend.vercel.app'  // Your production frontend on Vercel
+//   ],
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization'],
+//   credentials: true,
+//   preflightContinue: false,
+//   optionsSuccessStatus: 204
+// }));
 
 
 
