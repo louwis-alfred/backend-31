@@ -14,8 +14,6 @@ const transporter = nodemailer.createTransport({
 export const sendOtp = async (req, res) => {
   const { email } = req.body;
 
-  console.log("Received email:", email); // Debugging log
-
   if (!email) {
     return res.status(400).json({ success: false, message: 'Email is required' });
   }
@@ -35,50 +33,65 @@ export const sendOtp = async (req, res) => {
     res.json({ success: true, message: 'OTP sent to your email' });
   } catch (error) {
     console.error('Error sending OTP:', error);
-    res.status(500).json({ success: false, message: 'Error sending OTP' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error sending OTP',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
 const verifyOtpForRole = async (req, res, role) => {
   const { email, otp } = req.body;
 
-  console.log("Verifying OTP for:", email, "with OTP:", otp); // Debugging log
-
   try {
     const otpRecord = await Otp.findOne({ email, otp });
-    console.log("OTP Record found:", otpRecord); // Debugging log
 
     if (!otpRecord) {
       return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }
 
-    // Check if OTP is expired (assuming OTP is valid for 10 minutes)
-    const otpAge = (new Date() - new Date(otpRecord.createdAt)) / 1000 / 60; // in minutes
-    if (otpAge > 10) {
+    // Check if OTP is expired (10 minutes = 600000 ms)
+    if (Date.now() - otpRecord.createdAt > 600000) {
       return res.status(400).json({ success: false, message: 'OTP expired' });
     }
+    
     // Find user by email
-    const user = await userModel.findOne({email})
+    const user = await userModel.findOne({ email });
 
     if (!user) {
       // If user does not exist, proceed with registration
-      await Otp.deleteOne({_id: otpRecord._id})
-      return res.status(200).json({ success: true, message: 'OTP verified, proceed with registration' });
+      await Otp.deleteOne({ _id: otpRecord._id });
+      return res.status(200).json({ 
+        success: true, 
+        message: 'OTP verified, user not found. Proceed with registration.' 
+      });
     }
-    if (!user.role.includes(role)) {
-      user.role.push(role);
+    
+    // Update user role if different
+    // This is the key change - using single role instead of array
+    if (user.role !== role) {
+      user.role = role;
+      
+      await user.save();
     }
-    await user.save();
 
     await Otp.deleteOne({ _id: otpRecord._id });
 
-    res.json({ success: true, message: `OTP verified and user role updated to ${role}` });
+    res.json({ 
+      success: true, 
+      message: `OTP verified and user role updated to ${role}` 
+    });
   } catch (error) {
     console.error('Error verifying OTP:', error);
-    res.status(500).json({ success: false, message: 'Error verifying OTP' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error verifying OTP',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
-export const verifyOtpForUser = (req, res) => verifyOtpForRole(req, res, 'user');
+export const verifyOtpForUser = (req, res) => verifyOtpForRole(req, res, 'buyer');
 export const verifyOtpForSeller = (req, res) => verifyOtpForRole(req, res, 'seller');
 export const verifyOtpForInvestor = (req, res) => verifyOtpForRole(req, res, 'investor');

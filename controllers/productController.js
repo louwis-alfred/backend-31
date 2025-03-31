@@ -12,7 +12,7 @@ cloudinary.config({
 export const addProduct = async (req, res) => {
   try {
     const user = await userModel.findById(req.user._id);
-    if (!user || !user.role.includes("seller")) {
+    if (!user || user.role !== "seller") {
       return res
         .status(403)
         .json({ success: false, message: "Only sellers can add products" });

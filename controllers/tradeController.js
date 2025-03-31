@@ -199,7 +199,7 @@ export const initiateTrade = async (req, res) => {
 
     // 6. Validate recipient seller
     const sellerToUser = await userModel.findById(sellerTo);
-    if (!sellerToUser || !sellerToUser.role.includes("seller")) {
+    if (!sellerToUser || sellerToUser.role !== "seller") {
       return res.status(404).json({
         success: false,
         message: "Recipient seller not found or not a valid seller",
@@ -267,12 +267,12 @@ export const initiateTrade = async (req, res) => {
       .populate({
         path: "sellerFrom",
         select: "name email location",
-        model: "User" // Add this to fix the model reference
+        model: "User", // Add this to fix the model reference
       })
       .populate({
         path: "sellerTo",
         select: "name email location",
-        model: "User" // Add this to fix the model reference
+        model: "User", // Add this to fix the model reference
       });
 
     res.status(201).json({
@@ -433,7 +433,6 @@ export const cancelTrade = async (req, res) => {
   }
 };
 
-
 export const getCompletedTrades = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -454,12 +453,12 @@ export const getCompletedTrades = async (req, res) => {
       .populate({
         path: "sellerFrom",
         select: "name email location",
-        model: "User"
+        model: "User",
       })
       .populate({
         path: "sellerTo",
         select: "name email location",
-        model: "User"
+        model: "User",
       })
       .sort({ completedAt: -1 });
 
@@ -524,13 +523,13 @@ export const completeTrade = async (req, res) => {
       .populate({
         path: "sellerFrom",
         select: "name email",
-        model: "User"
+        model: "User",
       })
       .populate({
-        path: "sellerTo", 
+        path: "sellerTo",
         select: "name email",
-        model: "User"
-      })
+        model: "User",
+      });
 
     if (!trade) {
       return res.status(404).json({
@@ -767,13 +766,13 @@ export const getTrades = async (req, res) => {
       )
       .populate({
         path: "sellerFrom",
-        select: "name email location sellerApplication.supportingDocument",
-        model: "User" // Explicitly specify the model with proper case
+        select: "name email location sellerDocument",
+        model: "User", // Explicitly specify the model with proper case
       })
       .populate({
         path: "sellerTo",
-        select: "name email location sellerApplication.supportingDocument",
-        model: "User" // Explicitly specify the model with proper case
+        select: "name email location sellerDocument",
+        model: "User", // Explicitly specify the model with proper case
       })
       .sort({ createdAt: -1 });
 
@@ -934,8 +933,8 @@ export const getCurrentUserTradeProducts = async (req, res) => {
       .populate({
         path: "sellerId",
         select: "name email location",
-        model: "User"
-      })
+        model: "User",
+      });
 
     res.json({
       success: true,
@@ -1163,13 +1162,13 @@ export const getTradeDetails = async (req, res) => {
       .populate({
         path: "sellerFrom",
         select: "name email phone location supportingDocument",
-        model: "User"
+        model: "User",
       })
       .populate({
         path: "sellerTo",
         select: "name email phone location supportingDocument",
-        model: "User"
-      })
+        model: "User",
+      });
 
     if (!trade) {
       return res.status(404).json({
@@ -1298,13 +1297,13 @@ export const updateTrade = async (req, res) => {
       .populate({
         path: "sellerFrom",
         select: "name email location",
-        model: "User"
+        model: "User",
       })
       .populate({
         path: "sellerTo",
         select: "name email location",
-        model: "User"
-      })
+        model: "User",
+      });
 
     res.json({
       success: true,

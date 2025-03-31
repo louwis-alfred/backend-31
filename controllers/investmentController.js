@@ -302,7 +302,7 @@ const getInvestmentsByCampaign = async (req, res) => {
     const { campaignId } = req.params;
     const investments = await investmentModel
       .find({ campaignId })
-      .populate("userId", "name email role investorApplication.investmentType")
+      .populate("userId", "name email role investmentType")
       .sort("-date");
 
     res.json({

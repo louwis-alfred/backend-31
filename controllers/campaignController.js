@@ -3,6 +3,7 @@ import cloudinary from "../config/cloudinaryConfig.js";
 import fs from "fs";
 import User from "../models/userModel.js";
 import investmentModel from "../models/investmentModel.js";
+
 export const addCampaignVideo = async (req, res) => {
   try {
     const { campaignId } = req.params;
@@ -117,13 +118,15 @@ export const addCampaignVideo = async (req, res) => {
     });
   }
 };
+
 // Create a new campaign (for sellers only)
 export const createCampaign = async (req, res) => {
   try {
     const { title, description, category, endDate } = req.body;
 
     // Validate role - only sellers can create campaigns
-    if (!req.user.role.includes("seller")) {
+    // UPDATED: Changed from includes() to exact match
+    if (req.user.role !== "seller") {
       return res.status(403).json({
         success: false,
         message: "Only sellers can create campaigns",
@@ -270,6 +273,7 @@ export const getAllCampaigns = async (req, res) => {
     });
   }
 };
+
 // Get campaigns by investor ID
 export const getInvestorCampaigns = async (req, res) => {
   try {
@@ -296,14 +300,13 @@ export const getSellerCampaigns = async (req, res) => {
   }
 };
 
-
 export const getCampaignById = async (req, res) => {
   try {
     const { id } = req.params;
     const campaign = await Campaign.findById(id).populate({
       path: "sellerId",
       model: "User",
-      select: "name email phone location businessName sellerApplication"
+      select: "name email phone location businessName companyType province city farmLocation sellerContactNumber sellerDocument"
     });
 
     if (!campaign) {
@@ -313,22 +316,21 @@ export const getCampaignById = async (req, res) => {
       });
     }
 
-    // Enhanced seller information formatting with all sellerApplication fields
+    // UPDATED: Changed to access direct fields instead of sellerApplication nested object
     const formattedCampaign = {
       ...campaign._doc,
       sellerName: campaign.sellerId?.name || "Unknown Seller",
       sellerEmail: campaign.sellerId?.email,
-      sellerPhone: campaign.sellerId?.phone || campaign.sellerId?.sellerApplication?.contactNumber,
-      sellerLocation: campaign.sellerId?.location || campaign.sellerId?.sellerApplication?.farmLocation,
-      sellerBusinessName: campaign.sellerId?.businessName || campaign.sellerId?.sellerApplication?.businessName,
-      // Add all sellerApplication fields
-      companyType: campaign.sellerId?.sellerApplication?.companyType,
-      province: campaign.sellerId?.sellerApplication?.province,
-      city: campaign.sellerId?.sellerApplication?.city,
-      farmLocation: campaign.sellerId?.sellerApplication?.farmLocation,
-      contactNumber: campaign.sellerId?.sellerApplication?.contactNumber,
-      // Include the complete sellerApplication object for full access
-      sellerApplication: campaign.sellerId?.sellerApplication
+      sellerPhone: campaign.sellerId?.phone || campaign.sellerId?.sellerContactNumber,
+      sellerLocation: campaign.sellerId?.location || campaign.sellerId?.farmLocation,
+      sellerBusinessName: campaign.sellerId?.businessName,
+      // Direct access to seller fields
+      companyType: campaign.sellerId?.companyType,
+      province: campaign.sellerId?.province,
+      city: campaign.sellerId?.city,
+      farmLocation: campaign.sellerId?.farmLocation,
+      contactNumber: campaign.sellerId?.sellerContactNumber,
+      sellerDocument: campaign.sellerId?.sellerDocument
     };
 
     res.json({ 
@@ -365,7 +367,8 @@ export const updateCampaign = async (req, res) => {
       (campaign.sellerId &&
         campaign.sellerId.toString() === req.user._id.toString());
 
-    if (!isOwner && !req.user.role.includes("admin")) {
+    // UPDATED: Changed from includes() to exact match
+    if (!isOwner && req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
         message: "Not authorized to update this campaign",
@@ -405,7 +408,8 @@ export const deleteCampaign = async (req, res) => {
       (campaign.sellerId &&
         campaign.sellerId.toString() === req.user._id.toString());
 
-    if (!isOwner && !req.user.role.includes("admin")) {
+    // UPDATED: Changed from includes() to exact match
+    if (!isOwner && req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
         message: "Not authorized to delete this campaign",
