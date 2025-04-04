@@ -274,12 +274,73 @@ const allInvestments = async (req, res) => {
 // User's investments
 const userInvestments = async (req, res) => {
   try {
-    const userId = req.body.userId || req.user._id;
-    const investments = await investmentModel.find({ userId });
-    res.json({ success: true, investments });
+    const userId = req.user._id;
+    console.log("Fetching investments for user:", userId);
+    
+    // Just get basic investment data first
+    const investments = await investmentModel.find({ userId })
+      .populate('campaignId', 'title category sellerId sellerEmail')
+      .sort('-date');
+    
+    // Enhance with seller info explicitly
+    const enhancedInvestments = await Promise.all(investments.map(async (investment) => {
+      const investmentData = investment.toObject();
+      const campaign = investmentData.campaignId;
+      
+      // Default values
+      let sellerInfo = {
+        email: "N/A",
+        phoneNumber: "N/A"
+      };
+      
+      // Try to get seller info if we have a sellerId
+      if (campaign && campaign.sellerId) {
+        try {
+          // Select ALL possible contact number fields
+          const seller = await userModel.findById(campaign.sellerId)
+            .select('name email phoneNumber phone contactNumber sellerContactNumber mobileNumber')
+            .lean();
+          
+          console.log("Seller information found:", seller);
+          
+          if (seller) {
+            sellerInfo = {
+              email: seller.email || "N/A",
+              // Try all possible contact number field names
+              phoneNumber: seller.sellerContactNumber || 
+                           seller.phoneNumber || 
+                           seller.phone || 
+                           seller.contactNumber || 
+                           seller.mobileNumber || 
+                           "N/A"
+            };
+          }
+        } catch (err) {
+          console.log("Error fetching seller:", err);
+        }
+      }
+      
+      // Use campaign's sellerEmail as fallback
+      if (sellerInfo.email === "N/A" && campaign && campaign.sellerEmail) {
+        sellerInfo.email = campaign.sellerEmail;
+      }
+      
+      return {
+        ...investmentData,
+        campaignDetails: campaign ? {
+          title: campaign.title,
+          category: campaign.category
+        } : null,
+        seller: sellerInfo,
+        sellerEmail: sellerInfo.email,
+        sellerContactNumber: sellerInfo.phoneNumber
+      };
+    }));
+    
+    res.json({ success: true, investments: enhancedInvestments });
   } catch (error) {
-    console.log(error);
-    res.json({ success: false, message: error.message });
+    console.log("Error in userInvestments:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 // Reject an investment by seller
