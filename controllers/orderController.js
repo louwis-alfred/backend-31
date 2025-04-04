@@ -1,273 +1,8 @@
+import mongoose from "mongoose";
 import Order from "../models/orderModel.js";
 import Product from "../models/productModel.js";
-import mongoose from "mongoose";
-import Logistics from "../models/logisticsModel.js";
-import CourierPanel from "../models/courierPanelModel.js";
-import Courier from "../models/courierModel.js";
 import NotificationService from "../services/notificationService.js";
 import { isWithinCancellationPeriod, CANCELLATION_TIME_LIMIT } from "../utils/orderUtils.js";
-
-
-// Add to orderRoute.js
-
-// Add this function to your orderController.js
-export const getCourierPanelStatus = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order ID format",
-      });
-    }
-
-    const orderObjectId = new mongoose.Types.ObjectId(orderId);
-
-    // First check the Order collection directly (this will find your example data)
-    const order = await Order.findById(orderObjectId)
-      .populate("courierId", "name plate_number address")
-      .lean();
-
-    if (order && order.courierId) {
-      // Order has courier info directly attached
-      const courierName = order.courierId.name || "Assigned Courier";
-      
-      return res.json({
-        success: true,
-        orderId: orderId,
-        courierName,
-        status: order.status || "Assigned to Courier",
-        courierId: order.courierId._id.toString(),
-        trackingDetails: {
-          paymentMethod: order.paymentMethod,
-          date: order.date,
-          assignedAt: order.date,
-          courierInfo: {
-            name: courierName,
-            plate: order.courierId.plate_number || "",
-            address: order.courierId.address || "",
-          },
-        },
-        source: "order",
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    // Otherwise check CourierPanel as before
-    const courierPanel = await CourierPanel.findOne({ orderId: orderObjectId })
-      .populate("courierId", "name plate_number address")
-      .lean();
-
-    if (!courierPanel) {
-      return res.status(404).json({
-        success: false,
-        message: "Courier information not found for this order",
-      });
-    }
-
-    // Extract courier name
-    const courierName = courierPanel.courierId?.name || "Assigned to Courier";
-    const status = courierPanel.status || "Assigned to Courier";
-    const courierId = courierPanel.courierId?._id || null;
-
-    return res.json({
-      success: true,
-      orderId: orderId,
-      courierName,
-      status,
-      courierId: courierId ? courierId.toString() : null,
-      trackingDetails: {
-        paymentMethod: courierPanel.paymentMethod,
-        date: courierPanel.date,
-        assignedAt: courierPanel.createdAt || courierPanel.date,
-        courierInfo: {
-          name: courierName,
-          plate: courierPanel.courierId?.plate_number || "",
-          address: courierPanel.courierId?.address || "",
-        },
-      },
-      source: "courierPanel",
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("[COURIER PANEL] Error fetching courier status:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
-  }
-};
-// Add this function to your orderController.js
-// Unified function to get courier status from multiple sources
-export const getUnifiedCourierStatus = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order ID format",
-      });
-    }
-
-    const orderObjectId = new mongoose.Types.ObjectId(orderId);
-
-    // First check CourierPanel model (higher priority for status)
-    console.log("[UNIFIED] Checking CourierPanel for orderId:", orderId);
-    const courierPanel = await CourierPanel.findOne({
-      orderId: orderObjectId,
-    })
-      .populate("courierId", "name plate_number address")
-      .lean();
-
-    console.log(
-      "[UNIFIED] CourierPanel data:",
-      courierPanel ? JSON.stringify(courierPanel, null, 2) : "Not found"
-    );
-
-    // Then check Logistics model
-    console.log("[UNIFIED] Checking Logistics for orderId:", orderId);
-    const logistics = await Logistics.findOne({
-      orderId: orderObjectId,
-    })
-      .populate("courierId", "name plate_number address")
-      .lean();
-
-    console.log(
-      "[UNIFIED] Found in CourierPanel:",
-      courierPanel ? "Yes" : "No"
-    );
-    console.log("[UNIFIED] Found in Logistics:", logistics ? "Yes" : "No");
-
-    // Determine the status and courier info to return
-    let courierName = "Not Assigned";
-    let status = "Pending";
-    let source = "default";
-    let trackingDetails = null;
-    let courierId = null;
-
-    // Helper function to fetch courier details from Courier collection if necessary
-    const fetchCourierDetails = async (courierId) => {
-      if (courierId) {
-        try {
-          const courier = await Courier.findById(courierId).lean();
-          if (courier) {
-            return {
-              name: courier.name || "Unnamed Courier",
-              plate: courier.plate_number,
-              address: courier.address,
-              courierId: courier._id.toString(),
-            };
-          }
-        } catch (err) {
-          console.error("[UNIFIED] Error fetching courier from Courier collection:", err);
-        }
-      }
-      return null;
-    };
-
-    if (courierPanel) {
-      console.log("[UNIFIED] Using CourierPanel data");
-
-      // Check if courierId exists and is properly populated
-      if (
-        courierPanel.courierId &&
-        typeof courierPanel.courierId === "object"
-      ) {
-        courierName = courierPanel.courierId.name || "Unnamed Courier";
-        courierId = courierPanel.courierId._id || null;
-
-        console.log("[UNIFIED] Found courier name:", courierName);
-      } else {
-        console.log("[UNIFIED] No courier details in CourierPanel");
-
-        // If courierId exists but wasn't properly populated, fetch it separately
-        const courierDetails = await fetchCourierDetails(courierPanel.courierId);
-        if (courierDetails) {
-          courierName = courierDetails.name;
-          courierId = courierDetails.courierId;
-        } else {
-          courierName = "Assigned to Courier";
-        }
-      }
-
-      status = courierPanel.status || "Assigned to Courier";
-      source = "courierpanel";
-
-      // Include additional details that might be useful
-      trackingDetails = {
-        paymentMethod: courierPanel.paymentMethod,
-        date: courierPanel.date,
-        assignedAt: courierPanel.createdAt || courierPanel.date,
-        courierInfo: {
-          name: courierName,
-          plate: courierPanel.courierId?.plate_number || "",
-          address: courierPanel.courierId?.address || "",
-        },
-      };
-    } else if (logistics) {
-      console.log("[UNIFIED] Using Logistics data");
-      courierName = logistics.courierId?.name || "Not Assigned";
-      status = logistics.status || "Processing";
-      source = "logistics";
-      courierId = logistics.courierId?._id || null;
-
-      // Include tracking details if available
-      trackingDetails = {
-        trackingNumber: logistics.trackingNumber,
-        estimatedDelivery: logistics.estimatedDelivery,
-        shippedAt: logistics.shippedAt,
-        deliveredAt: logistics.deliveredAt,
-        courierInfo: logistics.courierId
-          ? {
-              name: logistics.courierId.name,
-              plate: logistics.courierId.plate_number,
-              address: logistics.courierId.address,
-            }
-          : null,
-      };
-    } else {
-      console.log("[UNIFIED] No courier data found, checking Order");
-      const order = await Order.findById(orderObjectId).lean();
-      if (order) {
-        status = order.status || "Pending";
-        console.log("[UNIFIED] Using Order status:", status);
-
-        // For confirmed orders with no courier yet
-        if (status === "Confirmed") {
-          courierName = "Pending Assignment";
-
-          // Fetch courier details from Courier collection when Pending Assignment
-          if (courierName === "Pending Assignment") {
-            // If there is no courier yet, set name as a generic placeholder
-            courierName = "Assigned to Courier";
-            source = "order";
-          }
-        }
-      }
-    }
-
-    // Return unified status information with properly stringified IDs
-    return res.json({
-      success: true,
-      orderId: orderId.toString(),
-      courierName: courierName,
-      status: status,
-      source: source,
-      courierId: courierId ? courierId.toString() : null,
-      trackingDetails: trackingDetails,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error("[UNIFIED] Error fetching courier status:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Internal server error",
-      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
-    });
-  }
-};
 
 
 // Seller confirms or rejects an order
@@ -334,71 +69,15 @@ export const sellerConfirmOrder = async (req, res) => {
 
       order.status = "Confirmed";
 
-      // Create entries in both Logistics and CourierPanel
-      try {
-        // Format items for tracking
-        const trackingItems = sellerItems.map(item => ({
-          product: item.product._id,
-          quantity: item.quantity,
-          name: item.product.name,
-          price: item.product.price,
-          image: item.product.images?.[0] || ""
-        }));
+      // Add to order tracking history
+      if (!order.tracking) order.tracking = { history: [] };
+      order.tracking.history.push({
+        status: "Confirmed",
+        timestamp: new Date(),
+        note: reason || "Order confirmed by seller",
+        updatedBy: sellerId
+      });
 
-        const itemsTotal = sellerItems.reduce(
-          (sum, item) => sum + item.product.price * item.quantity,
-          0
-        );
-
-        // Create logistics entry
-        const logisticsEntry = new Logistics({
-          userId: order.userId,
-          orderId: order._id,
-          items: trackingItems,
-          amount: itemsTotal,
-          address: order.address,
-          status: "Processing",
-          paymentMethod: order.paymentMethod,
-          payment: order.paymentStatus === "Paid",
-          date: Date.now()
-        });
-
-        // // Create courier panel entry
-        // const courierPanelEntry = new CourierPanel({
-        //   userId: order.userId,
-        //   orderId: order._id,
-        //   items: trackingItems,
-        //   amount: itemsTotal,
-        //   address: order.address,
-        //   status: "Processing",
-        //   paymentMethod: order.paymentMethod,
-        //   payment: order.paymentStatus === "Paid",
-        //   date: Date.now()
-        // });
-
-        // Add to order tracking history
-        if (!order.tracking) order.tracking = { history: [] };
-        order.tracking.history.push({
-          status: "Confirmed",
-          timestamp: new Date(),
-          note: reason || "Order confirmed by seller",
-          updatedBy: sellerId
-        });
-
-        await Promise.all([
-          logisticsEntry.save(),
-          // courierPanelEntry.save()
-        ]);
-
-        console.log("Created tracking entries:", {
-          logistics: logisticsEntry._id,
-          // courierPanel: courierPanelEntry._id
-        });
-
-      } catch (trackingError) {
-        console.error("Error creating tracking entries:", trackingError);
-        // Continue with order confirmation even if tracking creation fails
-      }
     } else {
       // Handle rejection
       order.status = "Rejected";
@@ -796,210 +475,6 @@ export const getPendingSellerOrders = async (req, res) => {
   }
 };
 
-
-// Helper function to get order details with courier information
-const getOrderDetailsWithCourier = async (orderId, userId) => {
-  try {
-    // FIXED: Use proper ObjectId and look for orderId only, not userId
-    const logistics = await Logistics.findOne({
-      orderId: new mongoose.Types.ObjectId(orderId),
-    }).populate("courierId");
-
-    if (!logistics) {
-      return {
-        courierInfo: {
-          courierName: "Not Assigned",
-          status: "Pending Confirmation", // Default status if no logistics
-          source: "default",
-        },
-      };
-    }
-
-    // Extract the status and courier name
-    const status = logistics.status || "Pending Confirmation";
-    const courierName = logistics.courierId
-      ? logistics.courierId.name
-      : "Not Assigned";
-
-    return {
-      courierInfo: {
-        courierName,
-        status: logistics.status,
-        source: "logistics",
-      },
-      status: logistics.status,
-    };
-  } catch (error) {
-    console.error(
-      `Error fetching logistics details for order ${orderId}:`,
-      error
-    );
-    return {
-      courierInfo: {
-        courierName: "Not Assigned",
-        status: "Pending Confirmation",
-        source: "error",
-      },
-    };
-  }
-};
-// Get courier information for a list of order IDs
-export const getCourierInfoForOrders = async (req, res) => {
-  try {
-    const { orderIds } = req.body;
-    const userId = req.user._id;
-
-    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Valid order IDs array required" });
-    }
-
-    console.log("Looking for courier info for order IDs:", orderIds);
-
-    // Convert all IDs to proper ObjectId format if they're valid
-    const validOrderIds = orderIds
-      .filter((id) => mongoose.Types.ObjectId.isValid(id))
-      .map((id) => new mongoose.Types.ObjectId(id));
-
-    if (validOrderIds.length === 0) {
-      return res.json({ success: true, courierInfo: [] });
-    }
-
-    console.log("Valid order IDs for query:", validOrderIds);
-
-    // Create a map to store courier info by order ID
-    const courierInfoMap = {};
-
-    console.log("Checking CourierPanel collection...");
-    const courierPanelCount = await CourierPanel.countDocuments();
-    console.log(
-      `Total documents in CourierPanel collection: ${courierPanelCount}`
-    );
-
-    // First, try with string IDs as a fallback
-    const orderIdStrings = validOrderIds.map((id) => id.toString());
-    console.log("Also checking with string IDs:", orderIdStrings);
-
-    // First, get courier assignments from CourierPanel
-    const courierPanelEntries = await CourierPanel.find({
-      orderId: { $in: validOrderIds },
-    }).populate("courierId", "name");
-
-    console.log(`Found ${courierPanelEntries.length} courier panel entries`);
-
-    // Process courier panel entries for courier names
-    courierPanelEntries.forEach((entry) => {
-      if (entry && entry.orderId) {
-        const orderId = entry.orderId.toString();
-        courierInfoMap[orderId] = {
-          orderId: orderId,
-          courierId: entry.courierId ? entry.courierId._id : null,
-          courierName: entry.courierId
-            ? entry.courierId.name
-            : "Assigned to Courier",
-          status: entry.status,
-        };
-      }
-    });
-
-    console.log("Checking Logistics collection...");
-    const logisticsCount = await Logistics.countDocuments();
-    console.log(`Total documents in Logistics collection: ${logisticsCount}`);
-
-    // Then get logistics entries - their status will take precedence
-    const logisticsEntries = await Logistics.find({
-      orderId: { $in: validOrderIds },
-    }).populate("courierId", "name");
-
-    console.log(`Found ${logisticsEntries.length} logistics entries`);
-
-    // Process logistics entries - overriding status information
-    logisticsEntries.forEach((entry) => {
-      if (entry && entry.orderId) {
-        const orderId = entry.orderId.toString();
-
-        if (courierInfoMap[orderId]) {
-          // If we already have courier info, update the status (logistics takes precedence)
-          courierInfoMap[orderId].status = entry.status;
-
-          // Only update courier name if not set from courier panel
-          if (
-            courierInfoMap[orderId].courierName === "Assigned to Courier" &&
-            entry.courierId
-          ) {
-            courierInfoMap[orderId].courierName = entry.courierId.name;
-            courierInfoMap[orderId].courierId = entry.courierId._id;
-          }
-        } else {
-          // If no courier info yet, create a new entry
-          courierInfoMap[orderId] = {
-            orderId: orderId,
-            courierId: entry.courierId ? entry.courierId._id : null,
-            courierName: entry.courierId
-              ? entry.courierId.name
-              : "Shipping in Progress",
-            status: entry.status,
-          };
-        }
-      }
-    });
-
-    // If no courier info found, create default entries for all orders
-    if (Object.keys(courierInfoMap).length === 0) {
-      console.log("No courier information found, creating default entries");
-      validOrderIds.forEach((id) => {
-        const orderId = id.toString();
-        courierInfoMap[orderId] = {
-          orderId: orderId,
-          courierName: "Not yet assigned",
-          status: "Pending",
-        };
-      });
-    }
-
-    // Convert the map to an array for response
-    const courierInfo = Object.values(courierInfoMap);
-
-    // Try to fetch more courier details if we have courier IDs
-    try {
-      const courierIds = courierInfo
-        .filter((info) => info.courierId)
-        .map((info) => new mongoose.Types.ObjectId(info.courierId));
-
-      if (courierIds.length > 0) {
-        console.log(
-          `Fetching additional details for ${courierIds.length} couriers`
-        );
-        const couriers = await Courier.find({ _id: { $in: courierIds } });
-
-        // Add more courier details if available
-        couriers.forEach((courier) => {
-          const courierId = courier._id.toString();
-          courierInfo.forEach((info) => {
-            if (info.courierId && info.courierId.toString() === courierId) {
-              info.courierDetails = {
-                name: courier.name,
-                plate: courier.plate_number,
-                address: courier.address,
-              };
-            }
-          });
-        });
-      }
-    } catch (error) {
-      console.error("Error fetching additional courier details:", error);
-      // Continue - this is not critical
-    }
-
-    console.log(`Returning ${courierInfo.length} courier info records`);
-    res.json({ success: true, courierInfo });
-  } catch (error) {
-    console.error("Error fetching courier information:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
 // Get orders for a specific seller
 export const getSellerOrders = async (req, res) => {
   try {
@@ -1066,11 +541,6 @@ export const getSellerOrders = async (req, res) => {
             image: item.product.images?.[0] || null,
           })),
           total: total,
-        },
-        logistics: {
-          courierName: order.courierInfo?.courierName || "Not Assigned",
-          trackingNumber: order.trackingNumber || null,
-          shippingStatus: order.shippingStatus || order.status,
         },
         lastUpdated: order.updatedAt || order.date,
       };
@@ -1447,65 +917,13 @@ export const userOrders = async (req, res) => {
       return res.json({ success: true, orders: [] });
     }
 
-    // Get all logistics entries in a single query for better performance
-    const allOrderIds = orders.map(
-      (order) => new mongoose.Types.ObjectId(order._id)
-    );
-    const logisticsEntries = await Logistics.find({
-      orderId: { $in: allOrderIds },
-    })
-      .populate("courierId")
-      .lean();
-
-    // Create a map for faster lookup
-    const logisticsMap = {};
-    logisticsEntries.forEach((entry) => {
-      if (entry.orderId) {
-        logisticsMap[entry.orderId.toString()] = entry;
-      }
-    });
-
     // Process each order
     const detailedOrders = orders.map((order) => {
-      // Find matching logistics entry
-      const logisticsEntry = logisticsMap[order._id.toString()];
-
       // Calculate order totals
       const orderTotal = order.items.reduce(
         (sum, item) => sum + (item.product?.price || 0) * item.quantity,
         0
       );
-
-      // Set default courier info
-      let courierInfo = {
-        courierName: "Not Assigned",
-        status: order.status || "Pending Confirmation",
-        source: "default",
-      };
-
-      // Override with logistics data if available
-      if (logisticsEntry) {
-        const status = logisticsEntry.status || "Pending Confirmation";
-        let courierName = "Not Assigned";
-
-        if (logisticsEntry.courierId) {
-          courierName =
-            logisticsEntry.courierId.name ||
-            `Courier #${logisticsEntry.courierId.toString()}`;
-        }
-
-        courierInfo = {
-          courierName,
-          status,
-          source: "logistics",
-          trackingNumber: logisticsEntry.trackingNumber,
-          estimatedDelivery: logisticsEntry.estimatedDelivery,
-          lastUpdate: logisticsEntry.updatedAt,
-        };
-
-        // Update order status from logistics entry
-        order.status = status;
-      }
 
       // Format order details
       return {
@@ -1538,15 +956,12 @@ export const userOrders = async (req, res) => {
                 country: order.address.country,
               }
             : null,
-          courier: courierInfo,
           fee: order.shippingFee || 0,
-          status: courierInfo.status,
+          status: order.status, // Just use the order status directly
         },
         timestamps: {
           ordered: order.date,
           updated: order.updatedAt || order.date,
-          shipped: logisticsEntry?.shippedAt,
-          delivered: logisticsEntry?.deliveredAt,
         },
       };
     });
@@ -1555,7 +970,7 @@ export const userOrders = async (req, res) => {
     try {
       await NotificationService.markAsRead({
         recipient: userId,
-        type: ["ORDER_STATUS", "ORDER_SHIPPED", "ORDER_DELIVERED"],
+        type: ["ORDER_STATUS"],
         data: {
           orderId: { $in: detailedOrders.map((order) => order._id) },
         },
@@ -1718,7 +1133,7 @@ export const getSellerOrderManagement = async (req, res) => {
     const orders = await Order.aggregate(aggregatePipeline);
     
     // Process orders to include only seller's items and calculate seller's totals
-    const processedOrders = await Promise.all(orders.map(async (order) => {
+    const processedOrders = orders.map((order) => {
       try {
         // Match products with order items
         const sellerItems = order.items.filter(item => {
@@ -1726,17 +1141,6 @@ export const getSellerOrderManagement = async (req, res) => {
             product._id.toString() === item.product.toString()
           );
         });
-        
-        // Get courier information
-        let courierInfo = { courierName: "Not Assigned", status: order.status };
-        try {
-          const orderDetailsWithCourier = await getOrderDetailsWithCourier(order._id);
-          if (orderDetailsWithCourier && orderDetailsWithCourier.courierInfo) {
-            courierInfo = orderDetailsWithCourier.courierInfo;
-          }
-        } catch (error) {
-          console.error(`Error getting courier info for order ${order._id}:`, error);
-        }
         
         // Calculate seller's total for this order
         const sellerTotal = sellerItems.reduce((sum, item) => {
@@ -1790,8 +1194,7 @@ export const getSellerOrderManagement = async (req, res) => {
           itemCount: formattedItems.length,
           total: sellerTotal,
           shipping: {
-            courier: courierInfo.courierName,
-            status: courierInfo.status
+            status: order.status
           },
           lastUpdated: order.updatedAt || order.date,
           needsAction: ['Order Placed', 'Pending Confirmation'].includes(order.status)
@@ -1800,7 +1203,7 @@ export const getSellerOrderManagement = async (req, res) => {
         console.error(`Error processing order ${order._id}:`, error);
         return null;
       }
-    }));
+    });
     
     // Filter out any errors
     const finalOrders = processedOrders.filter(order => order !== null);
@@ -1850,5 +1253,4 @@ export const getSellerOrderManagement = async (req, res) => {
       message: "An error occurred while retrieving your orders. Please try again later."
     });
   }
-};
-export { getOrderDetailsWithCourier };
+};  

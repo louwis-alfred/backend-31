@@ -24,7 +24,7 @@ export const getUserRole = async (req, res) => {
     const user = await userModel
       .findById(req.user.id || req.user._id)
       .select("role name email");
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -42,48 +42,76 @@ export const getUserRole = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
-      }
+        role: user.role,
+      },
     });
   } catch (error) {
     console.error("Error fetching user role:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch user role",
-      error: error.message
+      error: error.message,
     });
   }
 };
+export const adminLogin = async (req, res) => {
+  try {
+    const { username, password } = req.body;
 
+    // Check hardcoded admin credentials
+    if (username !== "admin" || password !== "admin") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin credentials",
+      });
+    }
 
+    // Return admin user info without JWT
+    res.status(200).json({
+      success: true,
+      user: {
+        _id: "admin-system-user",
+        name: "System Administrator",
+        role: "admin"
+      },
+      message: "Admin login successful",
+    });
+  } catch (error) {
+    console.error("Admin login error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error during admin login",
+    });
+  }
+};
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     // Check if email and password are provided
     if (!email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Email and password are required" 
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
       });
     }
 
     // Add .select('+password') to include the password field that's excluded by default
-    const user = await userModel.findOne({ email }).select('+password');
-    
+    const user = await userModel.findOne({ email }).select("+password");
+
     if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "User doesn't exist" 
+      return res.status(404).json({
+        success: false,
+        message: "User doesn't exist",
       });
     }
-    
+
     // Check if user has a password (should always be true, but let's be safe)
     if (!user.password) {
       console.error(`User ${user._id} has no password stored`);
-      return res.status(500).json({ 
-        success: false, 
-        message: "Authentication error" 
+      return res.status(500).json({
+        success: false,
+        message: "Authentication error",
       });
     }
 
@@ -101,16 +129,16 @@ export const loginUser = async (req, res) => {
         },
       });
     } else {
-      res.status(401).json({ 
-        success: false, 
-        message: "Invalid credentials" 
+      res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
       });
     }
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

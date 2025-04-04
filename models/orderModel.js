@@ -27,10 +27,33 @@ const orderSchema = new mongoose.Schema({
       note: { type: String },
       updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
     }],
-    estimatedDelivery: { type: Date },
-    trackingNumber: { type: String }
   },
-  
+  shipping: {
+    courier: { type: mongoose.Schema.Types.ObjectId, ref: 'Courier' },
+    shipments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Shipment' }],
+    totalCost: { type: Number, default: 0 },
+    estimatedDelivery: Date,
+    // New fields added as recommended
+    status: { 
+      type: String, 
+      enum: ['Not Shipped', 'Partially Shipped', 'Completely Shipped'],
+      default: 'Not Shipped'
+    },
+    method: { 
+      type: String, 
+      enum: ['Standard', 'Express', 'Same Day'],
+      default: 'Standard'
+    },
+    tracking: {
+      numbers: [String],  // For quick access to all tracking numbers
+      url: String         // URL template to tracking page
+    },
+    // Additional helpful fields
+    instructions: { type: String }, // Special delivery instructions
+    isContactless: { type: Boolean, default: false }, // Contactless delivery option
+    insuranceAmount: { type: Number, default: 0 }, // Shipping insurance amount
+    needsRefrigeration: { type: Boolean, default: false } // For perishable agricultural products
+  },
   sellerActions: [{
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     action: { type: String, enum: ['confirmed', 'rejected', 'shipped', 'refunded'] },
@@ -42,36 +65,6 @@ const orderSchema = new mongoose.Schema({
     }],
     timestamp: { type: Date, default: Date.now }
   }],
-  
-  refundInfo: {
-    refundedAt: { type: Date },
-    refundedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    reason: { type: String },
-    amount: { type: Number },
-    items: [{
-      productId: { type: mongoose.Schema.Types.ObjectId },
-      name: { type: String },
-      quantity: { type: Number }
-    }]
-  },
-  // Add this to your existing orderModel schema
-refundRequest: {
-  requestedAt: { type: Date },
-  requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  reason: { type: String },
-  images: [{ type: String }], // Optional proof images
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
-  amount: { type: Number },
-  items: [{
-    productId: { type: mongoose.Schema.Types.ObjectId },
-    name: { type: String },
-    quantity: { type: Number }
-  }],
-  message: { type: String },
-  responseMessage: { type: String },
-  respondedAt: { type: Date },
-  respondedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
-},
   amount: { type: Number, required: true },
   address: { type: Object, required: true },
   status: { 
@@ -113,6 +106,61 @@ orderSchema.virtual('formattedDate').get(function() {
   return this.date ? new Date(this.date).toLocaleString() : 'Unknown date';
 });
 
+// Add middleware to update shipping status when shipments are added or modified
+orderSchema.pre('save', async function(next) {
+  if (this.isModified('shipping.shipments')) {
+    if (!this.shipping.shipments || this.shipping.shipments.length === 0) {
+      this.shipping.status = 'Not Shipped';
+    } else {
+      // Check if all items have been assigned to shipments
+      // This would require looking up the shipments, which might be complex in a pre-save hook
+      // For simplicity, we'll just set it to 'Partially Shipped' if there's at least one shipment
+      this.shipping.status = 'Partially Shipped';
+      
+      // If you implement the logic to check if all items are shipped, you can set:
+      // this.shipping.status = 'Completely Shipped';
+    }
+    
+    // Collect tracking numbers from shipments (if they were populated)
+    if (this.populated('shipping.shipments')) {
+      this.shipping.tracking = {
+        numbers: this.shipping.shipments.map(shipment => shipment.trackingNumber).filter(Boolean),
+        url: this.shipping.courier?.trackingUrlTemplate || ''
+      };
+    }
+  }
+  next();
+});
+
+// Helper method to check if order is fully shipped
+orderSchema.methods.isFullyShipped = async function() {
+  if (!this.shipping || !this.shipping.shipments || this.shipping.shipments.length === 0) {
+    return false;
+  }
+  
+  // This would require populating shipments and checking if all order items are included
+  // For now we'll return a simple implementation
+  return this.shipping.status === 'Completely Shipped';
+};
+
+// Helper method to get shipping ETA
+orderSchema.methods.getShippingETA = function() {
+  if (!this.shipping || !this.shipping.estimatedDelivery) {
+    return null;
+  }
+  return this.shipping.estimatedDelivery;
+};
+
+// Generate tracking URL with the correct tracking number
+orderSchema.methods.getTrackingUrl = function(trackingNumber) {
+  if (!this.shipping || !this.shipping.tracking || !this.shipping.tracking.url) {
+    return null;
+  }
+  
+  // Replace placeholder with actual tracking number
+  return this.shipping.tracking.url.replace('{trackingNumber}', trackingNumber);
+};
+
 const orderHistorySchema = new mongoose.Schema({
   status: { 
     type: String,
@@ -145,15 +193,8 @@ const orderHistorySchema = new mongoose.Schema({
     newStatus: String,
     reason: String,
     location: String,
-    courierInfo: {
-      courierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Courier' },
-      courierName: String,
-      trackingNumber: String
-    }
   }
 });
-
-
 
 const orderModel = mongoose.models.Order || mongoose.model('Order', orderSchema);
 

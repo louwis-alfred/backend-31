@@ -7,18 +7,20 @@ import {
   getInvestmentsByCampaign,
   confirmInvestment,
   acceptInvestment,
-  completeInvestmentNegotiation,
+  rejectInvestment,
   getCompletedInvestmentsByCampaign,
-  getRecentInvestmentsByCampaign
+  getRejectedInvestmentsByCampaign,
+  getRecentInvestmentsByCampaign,
+  getInvestmentHistory
 } from "../controllers/investmentController.js";
 import { authUser, authInvestor, authSeller } from "../middleware/authRoles.js";
 
 const router = express.Router();
 
 // Place a new investment
-router.post("/create", authUser, placeInvestment);
+router.post("/create", authUser, authInvestor, placeInvestment);
 
-// Get all investments (admin only)
+// Get all investments
 router.get("/all", authUser, allInvestments);
 
 // Get user investments
@@ -27,18 +29,25 @@ router.get("/user", authUser, userInvestments);
 // Get investments by campaign ID
 router.get("/campaign/:campaignId", authUser, getInvestmentsByCampaign);
 
-// Update investment status (admin only)
-router.put("/update-status", authUser, updateInvestmentStatus);
+// Update investment status (now seller only)
+router.put("/update-status", authUser, authSeller, updateInvestmentStatus);
 
-// Confirm an investment (admin only)
-router.post("/confirm", authUser, confirmInvestment);
-
+// Confirm an investment (now no authentication required for testing)
+// Confirm investment routes (with seller authentication)
+router.post("/confirm", authUser, authSeller, confirmInvestment);
+router.post("/confirm/:investmentId", authUser, authSeller, confirmInvestment);
 // Accept investment (seller only)
 router.post("/accept", authUser, authSeller, acceptInvestment);
+router.post("/accept/:investmentId", authUser, authSeller, acceptInvestment);
+// Reject investment (seller only)
+router.post("/reject", authUser, authSeller, rejectInvestment);
+router.post("/reject/:investmentId", authUser, authSeller, rejectInvestment);
 
-// Complete investment negotiation (seller only)
-router.post("/complete", authUser, completeInvestmentNegotiation);
+// Get rejected investments by campaign ID
+router.get("/rejected/:campaignId", authUser, getRejectedInvestmentsByCampaign);
 
+// Get investment history with filtering
+router.get("/history", authUser, getInvestmentHistory);
 // Get completed investments by campaign ID
 router.get("/completed/:campaignId", authUser, getCompletedInvestmentsByCampaign);
 router.get("/campaign/:campaignId/recent", getRecentInvestmentsByCampaign);

@@ -69,11 +69,6 @@ const userSchema = new Schema(
       trim: true 
     },
     
-    // Seller references
-    products: [{
-      type: Schema.Types.ObjectId,
-      ref: "Product"
-    }],
     sellerOrders: [{
       type: Schema.Types.ObjectId,
       ref: "Order"

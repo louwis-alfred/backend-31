@@ -87,7 +87,22 @@ const authSeller = (req, res, next) => {
   }
   next();
 };
-
+// Middleware to check if the user is an admin
+const authAdmin = (req, res, next) => {
+  // Special case for hardcoded admin
+  if (req.user._id === 'admin-system-user' || req.user.role === 'admin') {
+    return next();
+  }
+  
+  // Regular role check
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Access denied. Not an admin.' 
+    });
+  }
+  next();
+};
 // Middleware to check if the user is an investor
 const authInvestor = (req, res, next) => {
   if (req.user.role !== 'investor') {
@@ -111,4 +126,4 @@ const authBuyer = (req, res, next) => {
 };
 
 
-export { authUser, authSeller, authInvestor, authBuyer, softAuth };
+export { authUser, authSeller, authInvestor, authBuyer, softAuth, authAdmin };
